@@ -1,4 +1,8 @@
-# AGENTS.md — Project Conventions for new-api
+# AGENTS.md
+
+This file provides guidance to coding agents working with code in this repository.
+
+> Note: `CLAUDE.md` is an identical mirror of this file for Claude Code. **Keep both in sync** when editing.
 
 ## Overview
 
@@ -6,12 +10,52 @@ This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI pro
 
 ## Tech Stack
 
-- **Backend**: Go 1.22+, Gin web framework, GORM v2 ORM
-- **Frontend**: React 19, TypeScript, Rsbuild, Base UI, Tailwind CSS
-- **Databases**: SQLite, MySQL, PostgreSQL (all three must be supported)
+- **Backend**: Go (`go.mod` declares `go 1.25.1`; Docker builds with golang 1.26), Gin web framework, GORM v2 ORM
+- **Frontend**: React 19, TypeScript, Rsbuild, Base UI, Tailwind CSS (`web/default/`); legacy React 18 + Vite + Semi Design (`web/classic/`)
+- **Databases**: SQLite, MySQL >= 5.7.8, PostgreSQL >= 9.6 (all three must be supported)
 - **Cache**: Redis (go-redis) + in-memory cache
 - **Auth**: JWT, WebAuthn/Passkeys, OAuth (GitHub, Discord, OIDC, etc.)
 - **Frontend package manager**: Bun (preferred over npm/yarn/pnpm)
+
+## Build, Run & Test
+
+The root `makefile` is the canonical entrypoint. Both frontends are embedded into the Go binary via `//go:embed web/default/dist` and `//go:embed web/classic/dist` in `main.go`, so a full release build requires building both frontends first.
+
+| Task | Command |
+|------|---------|
+| Run full dev stack (docker deps + frontend) | `make dev` |
+| Backend only (Go run)                       | `make start-backend` (or `go run main.go`) |
+| Default frontend dev server                 | `make dev-web` (or `cd web/default && bun run dev`) |
+| Classic frontend dev server                 | `make dev-web-classic` |
+| Build default frontend                      | `make build-frontend` |
+| Build classic frontend                      | `make build-frontend-classic` |
+| Build both frontends                        | `make build-all-frontends` |
+| Production binary                           | `go build -o new-api` (after frontends are built) |
+| Spin up dev DB/Redis only                   | `make dev-api` (uses `docker-compose.dev.yml`) |
+| Full container deploy                       | `docker-compose up -d` (uses `docker-compose.yml`) |
+
+**Go tests** (≈130 test functions across `dto/`, `controller/`, `service/`, `common/`, `model/`, `pkg/billingexpr/`):
+
+```bash
+go test ./...                                         # all packages
+go test ./service/...                                 # one package tree
+go test ./service -run TestTextQuota                  # single test
+go test ./service -run TestTextQuota -v -count=1      # verbose, no cache
+```
+
+**Frontend checks** (run from `web/default/`):
+
+```bash
+bun install
+bun run typecheck          # tsc -b
+bun run lint               # eslint
+bun run format:check       # prettier --check
+bun run build:check        # typecheck + production build
+bun run i18n:sync          # sync locale JSON files
+bun run knip               # unused exports/files
+```
+
+The classic frontend has its own `package.json`/scripts under `web/classic/`.
 
 ## Architecture
 
@@ -38,6 +82,36 @@ web/             — Frontend themes container
   web/classic/   — Classic frontend (React 18, Vite, Semi Design)
   web/default/src/i18n/ — Frontend internationalization (i18next, zh/en/fr/ru/ja/vi)
 ```
+
+## Relay System (Core Architecture)
+
+The relay subsystem is what makes this an AI gateway — every upstream provider is plugged in through a uniform `Adaptor` interface, and the same client request can be expressed in OpenAI / Claude / Gemini / Responses / image / audio / rerank / embedding / task formats.
+
+**Entry boot sequence** (`main.go` → `InitResources`): env load → ratio settings → HTTP client / token encoders → `model.InitDB` (auto-migrate) → option map → log DB → Redis → perf metrics → i18n. After init, background goroutines start: channel cache sync, options sync, quota dashboard, channel auto-test, codex credential refresh, subscription quota reset, channel upstream model update, midjourney/task pollers.
+
+**Request flow for relay calls**:
+
+1. `router/relay-router.go` matches `/v1/*` routes (chat completions, responses, images, audio, embeddings, rerank, claude messages, gemini, video, MJ, etc.).
+2. Middleware (`middleware/`) handles auth, distribution (channel selection), rate limit, request-id, i18n.
+3. Handler in `relay/` (e.g. `claude_handler.go`, `gemini_handler.go`, `image_handler.go`, `audio_handler.go`, `responses_handler.go`, `relay_task.go`) builds a `RelayInfo` (`relay/common/relay_info.go`) and dispatches via `relay.GetAdaptor(apiType)` (`relay/relay_adaptor.go`).
+4. The adapter (one of 40+ in `relay/channel/<provider>/`) implements `channel.Adaptor` (`relay/channel/adapter.go`) — the methods you'll touch most:
+   - `Init`, `GetRequestURL`, `SetupRequestHeader`
+   - `Convert{OpenAI,Claude,Gemini,Embedding,Audio,Image,Rerank,OpenAIResponses}Request` — translate the canonical inbound DTO to the upstream's wire format
+   - `DoRequest`, `DoResponse` — execute the call and translate the response back (including streaming)
+   - `GetModelList`, `GetChannelName`
+5. Async/long-running providers (suno, kling, vidu, sora, jimeng, doubao, hailuo, vertex tasks, MJ) implement the richer `channel.TaskAdaptor` with `EstimateBilling` / `AdjustBillingOnSubmit` / `AdjustBillingOnComplete` hooks; polling is driven by `service/task_polling.go` with the factory wired in `main.go` (`service.GetTaskAdaptorFunc = relay.GetTaskAdaptor`).
+6. Billing happens around the call: `service/pre_consume_quota.go` reserves quota; `service/billing*.go` and `service/text_quota_test.go` settle. Tiered/dynamic pricing goes through `pkg/billingexpr/` (see Rule 7).
+
+**Adding a new channel** (typical workflow):
+
+1. Add a constant in `constant/api_type.go` (and channel-type constant if needed).
+2. Create `relay/channel/<name>/` with at minimum `adaptor.go`, request/response converters, and a model list.
+3. Wire it into the switch in `relay/relay_adaptor.go` (`GetAdaptor`, and `GetTaskAdaptor` if it's a task channel).
+4. If the upstream supports OpenAI-style `stream_options`, add the channel-type to `streamSupportedChannels` in `relay/common/relay_info.go` (Rule 4).
+5. Add channel UI metadata under `web/default/src/` (channel forms, model lists) and the i18n keys.
+6. Add tests where the converters have non-trivial logic (look at `dto/openai_request_zero_value_test.go`, `dto/gemini_isstream_test.go` for patterns).
+
+**Master vs. worker nodes**: `NODE_TYPE=master` (default) runs the full set of background tasks (MJ/task bulk update, etc.); workers skip them. Use `SESSION_SECRET` (shared random string) for multi-node deploys so cookies validate across nodes.
 
 ## Internationalization (i18n)
 
@@ -104,7 +178,7 @@ Use `bun` as the preferred package manager and script runner for the frontend (`
 
 When implementing a new channel:
 - Confirm whether the provider supports `StreamOptions`.
-- If supported, add the channel to `streamSupportedChannels`.
+- If supported, add the channel to `streamSupportedChannels` in `relay/common/relay_info.go`.
 
 ### Rule 5: Protected Project Information — DO NOT Modify or Delete
 
