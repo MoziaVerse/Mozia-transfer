@@ -274,6 +274,8 @@ var defaultModelRatio = map[string]float64{
 	"deepseek-ai/DeepSeek-R1":                 0.8,
 	"deepseek-ai/DeepSeek-V3-0324":            0.8,
 	"deepseek-ai/DeepSeek-V3.1":               0.8,
+	// HDU (杭电内部 LLM 服务)
+	"qwen3.5-397b": 0.5,
 }
 
 var defaultModelPrice = map[string]float64{
@@ -337,6 +339,7 @@ var defaultCompletionRatio = map[string]float64{
 	"gpt-4o-gizmo-*": 3,
 	"gpt-4-all":      2,
 	"gpt-image-1":    8,
+	"qwen3.5-397b":   2,
 }
 
 // InitRatioSettings initializes all model related settings maps

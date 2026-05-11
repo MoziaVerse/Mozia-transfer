@@ -56,6 +56,7 @@ const (
 	ChannelTypeReplicate      = 56
 	ChannelTypeCodex          = 57
 	ChannelTypeQwenImageEdit  = 58
+	ChannelTypeHDU            = 59
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -120,6 +121,7 @@ var ChannelBaseURLs = []string{
 	"https://api.replicate.com",                 //56
 	"https://chatgpt.com",                       //57
 	"http://127.0.0.1:8210",                     //58 QwenImageEdit (local MTT S4000 service)
+	"https://mz01.hdu.edu.cn",                   //59 HDU (杭州电子科技大学内部 LLM 服务，OpenAI 兼容)
 }
 
 var ChannelTypeNames = map[int]string{
@@ -178,6 +180,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeReplicate:      "Replicate",
 	ChannelTypeCodex:          "Codex",
 	ChannelTypeQwenImageEdit:  "QwenImageEdit",
+	ChannelTypeHDU:            "HDU",
 }
 
 func GetChannelTypeName(channelType int) string {
