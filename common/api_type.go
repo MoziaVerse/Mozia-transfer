@@ -77,6 +77,8 @@ func ChannelType2APIType(channelType int) (int, bool) {
 		apiType = constant.APITypeCodex
 	case constant.ChannelTypeQwenImageEdit:
 		apiType = constant.APITypeQwenImageEdit
+	case constant.ChannelTypeOmniVoice:
+		apiType = constant.APITypeOmniVoice
 	}
 	if apiType == -1 {
 		return constant.APITypeOpenAI, false

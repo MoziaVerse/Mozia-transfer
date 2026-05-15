@@ -85,6 +85,7 @@ export function getChannelTypeIcon(type: number): string {
     56: 'Replicate', // Replicate
     58: 'Qwen', // QwenImageEdit (local MTT S4000 service)
     59: 'Qwen', // HDU (杭电内部 qwen3.5 服务)
+    60: 'OpenAI', // OmniVoice (local MTT S4000，FastAPI OpenAI 兼容 TTS)
 
     // Tools & Platforms
     37: 'Dify', // Dify

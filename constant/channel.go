@@ -57,6 +57,7 @@ const (
 	ChannelTypeCodex          = 57
 	ChannelTypeQwenImageEdit  = 58
 	ChannelTypeHDU            = 59
+	ChannelTypeOmniVoice      = 60
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -122,6 +123,7 @@ var ChannelBaseURLs = []string{
 	"https://chatgpt.com",                       //57
 	"http://127.0.0.1:8210",                     //58 QwenImageEdit (local MTT S4000 service)
 	"https://mz01.hdu.edu.cn",                   //59 HDU (杭州电子科技大学内部 LLM 服务，OpenAI 兼容)
+	"http://127.0.0.1:8211",                     //60 OmniVoice (local MTT S4000，FastAPI 包装，OpenAI 兼容 TTS)
 }
 
 var ChannelTypeNames = map[int]string{
@@ -181,6 +183,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeCodex:          "Codex",
 	ChannelTypeQwenImageEdit:  "QwenImageEdit",
 	ChannelTypeHDU:            "HDU",
+	ChannelTypeOmniVoice:      "OmniVoice",
 }
 
 func GetChannelTypeName(channelType int) string {
